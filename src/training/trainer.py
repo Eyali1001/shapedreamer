@@ -341,7 +341,6 @@ def create_trainer(
         out_channels=1,
         base_channels=64,
         channel_mults=(1, 2, 4, 8),
-        num_res_blocks=1,
     )
 
     # Create diffusion
