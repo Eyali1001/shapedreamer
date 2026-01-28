@@ -3,14 +3,14 @@
 Capture frames from the live diffusion stream and create a GIF.
 
 Usage:
-    # Capture from Modal endpoint
-    uv run scripts/capture_gif.py --url https://eyali1001--live-diffusion-livediffusionserver-stream-dev.modal.run
+    # Capture from Modal endpoint (use stream URL from `modal serve` output)
+    uv run scripts/capture_gif.py --url https://YOUR-MODAL-STREAM-URL
 
     # Capture from local server
     uv run scripts/capture_gif.py --url http://localhost:5000/stream
 
     # Customize duration and output
-    uv run scripts/capture_gif.py --url <stream-url> --duration 10 --output assets/demo.gif
+    uv run scripts/capture_gif.py --duration 10 --output assets/demo.gif
 """
 
 import argparse
@@ -116,7 +116,7 @@ def main():
     parser.add_argument(
         "--url",
         type=str,
-        default="https://eyali1001--live-diffusion-livediffusionserver-stream-dev.modal.run",
+        default="http://localhost:5000/stream",
         help="Stream URL",
     )
     parser.add_argument(
