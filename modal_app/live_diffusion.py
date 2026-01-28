@@ -315,8 +315,16 @@ class LiveDiffusionServer:
         self.post_var = post_var.to(self.device).half()
         self.post_log_var = torch.log(torch.clamp(post_var, min=1e-20)).to(self.device).half()
 
-        # Start with zeros - first evolve() will create a shape
-        self.current_image = torch.zeros(1, 1, 32, 32, device=self.device, dtype=torch.float16)
+        # Generate random initial shape using DDIM
+        print("Generating random initial shape...")
+        with torch.no_grad():
+            x = torch.randn(1, 1, 32, 32, device=self.device, dtype=torch.float16)
+            # Quick DDIM from t=999 to t=0 in 25 steps
+            timesteps = list(range(999, -1, -40))  # 25 steps
+            for i, t in enumerate(timesteps):
+                t_prev = timesteps[i + 1] if i + 1 < len(timesteps) else 0
+                x = self._ddim_sample(x, t, t_prev)
+            self.current_image = x
         print("Ready to serve!")
 
     def _ddim_sample(self, x, t, t_prev):
