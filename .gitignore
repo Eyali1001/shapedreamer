@@ -1,0 +1,44 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# uv
+.uv/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Training outputs
+checkpoints/
+logs/
+*.pt
+*.pth
+
+# Samples and visualizations
+samples*.png
+*.png
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Modal
+.modal/
