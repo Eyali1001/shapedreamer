@@ -92,6 +92,17 @@ HTML_TEMPLATE = """
     </div>
 
     <div class="controls">
+        <button id="randomize" onclick="randomize()" style="
+            background: linear-gradient(90deg, #7c3aed, #00d4aa);
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-right: 20px;
+        ">Randomize</button>
+
         <label>Creativity:</label>
         <input type="range" id="creativity" min="50" max="300" value="150"
                onchange="updateCreativity(this.value)">
@@ -108,22 +119,30 @@ HTML_TEMPLATE = """
     <p class="stats">Model: DDPM U-Net | Resolution: 32x32 | Running on Modal A100</p>
 
     <script>
-        // Construct stream URL from current page URL (replace 'index' with 'stream')
-        const streamUrl = window.location.href.replace('index', 'stream').split('?')[0];
-        document.getElementById('stream').src = streamUrl;
+        // Construct URLs from current page URL
+        const baseUrl = window.location.href.replace('index', '').split('?')[0];
+        const streamUrl = baseUrl.replace(/\/$/, '') + 'stream'.replace(/^/, '-').replace('-', '');
+        document.getElementById('stream').src = window.location.href.replace('index', 'stream').split('?')[0];
 
         function updateCreativity(value) {
             document.getElementById('creativity-value').textContent = value;
-            const creativityUrl = window.location.href.replace('index', 'set-creativity').split('?')[0] + '?value=' + value;
-            fetch(creativityUrl);
+            fetch(window.location.href.replace('index', 'set-creativity').split('?')[0] + '?value=' + value);
         }
         function updateScale(value) {
             const img = document.getElementById('stream');
             img.width = value;
             img.height = value;
         }
+        function randomize() {
+            fetch(window.location.href.replace('index', 'randomize').split('?')[0])
+                .then(() => {
+                    // Refresh stream
+                    const img = document.getElementById('stream');
+                    img.src = window.location.href.replace('index', 'stream').split('?')[0] + '?' + Date.now();
+                });
+        }
         document.getElementById('stream').onerror = function() {
-            setTimeout(() => { this.src = streamUrl + '?' + Date.now(); }, 1000);
+            setTimeout(() => { this.src = window.location.href.replace('index', 'stream').split('?')[0] + '?' + Date.now(); }, 1000);
         };
     </script>
 </body>
@@ -315,16 +334,8 @@ class LiveDiffusionServer:
         self.post_var = post_var.to(self.device).half()
         self.post_log_var = torch.log(torch.clamp(post_var, min=1e-20)).to(self.device).half()
 
-        # Generate random initial shape using DDIM
-        print("Generating random initial shape...")
-        with torch.no_grad():
-            x = torch.randn(1, 1, 32, 32, device=self.device, dtype=torch.float16)
-            # Quick DDIM from t=999 to t=0 in 25 steps
-            timesteps = list(range(999, -1, -40))  # 25 steps
-            for i, t in enumerate(timesteps):
-                t_prev = timesteps[i + 1] if i + 1 < len(timesteps) else 0
-                x = self._ddim_sample(x, t, t_prev)
-            self.current_image = x
+        # Start from pure noise - will evolve into shapes
+        self.current_image = torch.randn(1, 1, 32, 32, device=self.device, dtype=torch.float16)
         print("Ready to serve!")
 
     def _ddim_sample(self, x, t, t_prev):
@@ -397,5 +408,12 @@ class LiveDiffusionServer:
 
     @modal.fastapi_endpoint(method="GET")
     def set_creativity(self, value: int = 75):
-        self.creativity = max(20, min(200, value))
+        self.creativity = max(20, min(300, value))
         return {"creativity": self.creativity}
+
+    @modal.fastapi_endpoint(method="GET")
+    def randomize(self):
+        import torch
+        with torch.no_grad():
+            self.current_image = torch.randn(1, 1, 32, 32, device=self.device, dtype=torch.float16)
+        return {"status": "randomized"}
