@@ -73,13 +73,6 @@ def train(
         lr: Learning rate
         resume: Whether to resume from latest checkpoint
     """
-    import sys
-    import os
-
-    # The source code is mounted, add it to path
-    # For Modal, we need to copy the source files
-    # Let's embed the training logic directly
-
     import torch
     import torch.nn as nn
     from torch.utils.data import Dataset, DataLoader
@@ -223,68 +216,70 @@ def train(
             return self.conv(F.interpolate(x, scale_factor=2, mode='nearest'))
 
     class UNet(nn.Module):
-        def __init__(self, in_channels=1, out_channels=1, base_channels=64, channel_mults=(1, 2, 4, 8), time_emb_dim=128):
+        def __init__(self, in_channels=1, out_channels=1, base_channels=64,
+                     channel_mults=(1, 2, 4, 8), time_emb_dim=128, num_groups=8, num_heads=4):
             super().__init__()
+
+            self.channels = [base_channels * m for m in channel_mults]
+            self.num_levels = len(channel_mults)
+
             self.time_embedding = TimeEmbedding(time_emb_dim)
             self.init_conv = nn.Conv2d(in_channels, base_channels, 3, padding=1)
 
-            self.encoder_blocks = nn.ModuleList()
+            # Encoder
+            self.encoder_resblocks = nn.ModuleList()
             self.encoder_attns = nn.ModuleList()
             self.encoder_downsamples = nn.ModuleList()
-            self.skip_channels = [base_channels]
 
-            current_ch = base_channels
-            for level, mult in enumerate(channel_mults[:-1]):
-                out_ch = base_channels * mult
-                self.encoder_blocks.append(nn.ModuleList([ResBlock(current_ch, out_ch, time_emb_dim)]))
-                current_ch = out_ch
-                self.skip_channels.append(current_ch)
-                self.encoder_attns.append(AttentionBlock(current_ch))
-                self.encoder_downsamples.append(Downsample(current_ch) if level < len(channel_mults) - 2 else nn.Identity())
+            for i in range(self.num_levels - 1):
+                in_ch = self.channels[i] if i > 0 else base_channels
+                out_ch = self.channels[i]
+                self.encoder_resblocks.append(ResBlock(in_ch, out_ch, time_emb_dim, num_groups))
+                self.encoder_attns.append(AttentionBlock(out_ch, num_heads, num_groups))
+                next_ch = self.channels[i + 1]
+                self.encoder_downsamples.append(Downsample(out_ch, next_ch))
 
-            bottleneck_ch = base_channels * channel_mults[-1]
-            self.bottleneck_res1 = ResBlock(current_ch, bottleneck_ch, time_emb_dim)
-            self.bottleneck_attn = AttentionBlock(bottleneck_ch)
-            self.bottleneck_res2 = ResBlock(bottleneck_ch, bottleneck_ch, time_emb_dim)
-            current_ch = bottleneck_ch
+            # Bottleneck
+            bottleneck_ch = self.channels[-1]
+            self.bottleneck_res1 = ResBlock(bottleneck_ch, bottleneck_ch, time_emb_dim, num_groups)
+            self.bottleneck_attn = AttentionBlock(bottleneck_ch, num_heads, num_groups)
+            self.bottleneck_res2 = ResBlock(bottleneck_ch, bottleneck_ch, time_emb_dim, num_groups)
 
+            # Decoder
             self.decoder_upsamples = nn.ModuleList()
-            self.decoder_blocks = nn.ModuleList()
+            self.decoder_resblocks = nn.ModuleList()
             self.decoder_attns = nn.ModuleList()
 
-            for level, mult in enumerate(reversed(channel_mults[:-1])):
-                out_ch = base_channels * mult
-                self.decoder_upsamples.append(Upsample(current_ch))
-                skip_ch = self.skip_channels.pop()
-                self.decoder_blocks.append(nn.ModuleList([ResBlock(current_ch + skip_ch, out_ch, time_emb_dim)]))
-                current_ch = out_ch
-                self.decoder_attns.append(AttentionBlock(current_ch))
+            for i in range(self.num_levels - 2, -1, -1):
+                in_ch = self.channels[i + 1]
+                out_ch = self.channels[i]
+                self.decoder_upsamples.append(Upsample(in_ch, out_ch))
+                self.decoder_resblocks.append(ResBlock(out_ch * 2, out_ch, time_emb_dim, num_groups))
+                self.decoder_attns.append(AttentionBlock(out_ch, num_heads, num_groups))
 
-            self.final_norm = nn.GroupNorm(8, current_ch)
-            self.final_conv = nn.Conv2d(current_ch, out_channels, 3, padding=1)
+            self.final_norm = nn.GroupNorm(num_groups, base_channels)
+            self.final_conv = nn.Conv2d(base_channels, out_channels, 3, padding=1)
 
         def forward(self, x, t):
             time_emb = self.time_embedding(t)
             h = self.init_conv(x)
-            skips = [h]
+            skips = []
 
-            for blocks, attn, down in zip(self.encoder_blocks, self.encoder_attns, self.encoder_downsamples):
-                for block in blocks:
-                    h = block(h, time_emb)
-                    skips.append(h)
+            for resblock, attn, down in zip(self.encoder_resblocks, self.encoder_attns, self.encoder_downsamples):
+                h = resblock(h, time_emb)
                 h = attn(h)
+                skips.append(h)
                 h = down(h)
 
             h = self.bottleneck_res1(h, time_emb)
             h = self.bottleneck_attn(h)
             h = self.bottleneck_res2(h, time_emb)
 
-            for up, blocks, attn in zip(self.decoder_upsamples, self.decoder_blocks, self.decoder_attns):
+            for up, resblock, attn in zip(self.decoder_upsamples, self.decoder_resblocks, self.decoder_attns):
                 h = up(h)
-                for i, block in enumerate(blocks):
-                    if i == 0 and skips:
-                        h = torch.cat([h, skips.pop()], dim=1)
-                    h = block(h, time_emb)
+                skip = skips.pop()
+                h = torch.cat([h, skip], dim=1)
+                h = resblock(h, time_emb)
                 h = attn(h)
 
             return self.final_conv(F.silu(self.final_norm(h)))
