@@ -1,235 +1,162 @@
-# Toy Diffusion Model
+<div align="center">
 
-An educational implementation of DDPM (Denoising Diffusion Probabilistic Models) that generates 32x32 binary pixel art of geometric shapes.
+# ShapeDreamer
 
-This project is designed for **learning** - the code is heavily commented to explain diffusion concepts, and the simple dataset (geometric shapes) makes it easy to verify that the model is working correctly.
-
-## What You'll Learn
-
-- **Forward diffusion process**: How noise is gradually added to images
-- **Reverse diffusion process**: How a neural network learns to denoise
-- **U-Net architecture**: The standard backbone for diffusion models
-- **Time embeddings**: How models condition on the timestep
-- **Attention mechanisms**: Capturing global spatial relationships
-- **Training dynamics**: What loss curves and samples look like during training
-
-## Quick Start
-
-### Prerequisites
-
-- Python 3.10+
-- [uv](https://github.com/astral-sh/uv) (recommended) or pip
-
-### Installation
-
-```bash
-# Clone the repository
-git clone <your-repo-url>
-cd toy_diffusion
-
-# Install dependencies with uv
-uv sync
-
-# Or with pip
-pip install -e .
-```
-
-### Local Training (CPU/MPS/CUDA)
-
-```bash
-# Quick test (5 epochs, 1000 samples)
-uv run scripts/train_local.py --epochs 5 --samples 1000 --batch-size 32
-
-# Full training (will be slow on CPU, ~30 min on M1 Mac, ~5 min on GPU)
-uv run scripts/train_local.py --epochs 100 --samples 10000
-
-# Resume from checkpoint
-uv run scripts/train_local.py --resume --epochs 100
-```
-
-### Generate Samples
-
-```bash
-# Generate samples from a trained model
-uv run scripts/sample.py --checkpoint checkpoints/best.pt
-
-# Show the diffusion process (noise → image)
-uv run scripts/sample.py --checkpoint checkpoints/best.pt --show-process
-
-# Save samples to file
-uv run scripts/sample.py --checkpoint checkpoints/best.pt --output samples.png
-```
-
-### Monitor Training
-
-```bash
-# Start TensorBoard to view loss curves and generated samples
-tensorboard --logdir logs
-```
-
-## Live Streaming Demo
-
-Watch the diffusion model continuously evolve geometric shapes in real-time!
+**Watch a neural network dream up geometric shapes in real-time**
 
 ![Live Diffusion Demo](assets/live_diffusion.gif)
 
-### Run on Modal (Recommended - A100 GPU)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Modal](https://img.shields.io/badge/cloud-Modal-green.svg)](https://modal.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+[Live Demo](#live-demo) | [Quick Start](#quick-start) | [How It Works](#how-it-works) | [Train Your Own](#training)
+
+</div>
+
+---
+
+An educational **DDPM (Denoising Diffusion Probabilistic Model)** that generates 32x32 pixel art of geometric shapes. Heavily commented code, simple dataset, instant results.
+
+## Live Demo
+
+Stream continuously evolving shapes from an A100 GPU:
 
 ```bash
-# Start the live streaming server
 modal serve modal_app/live_diffusion.py
-
-# Opens web interface at the printed URL
-# Use the creativity slider to control how much shapes change per frame
 ```
 
-**Features:**
-- **DDIM sampling**: 20 steps instead of 140+ for ~7x faster generation
-- **FP16 inference**: Additional ~2x speedup
-- **Creativity control**: Adjust how much noise is added between frames
-- **Real-time MJPEG stream**: Works in any browser
+Then open the printed URL. Use the **creativity slider** to control how much shapes morph between frames.
 
-### Run Locally
+> **Speed:** DDIM sampling (20 steps) + FP16 = **~10x faster** than vanilla DDPM
+
+---
+
+## Quick Start
 
 ```bash
-# Matplotlib-based viewer (requires display)
-uv run scripts/live_diffusion.py --checkpoint checkpoints/best.pt
+# Clone & install
+git clone https://github.com/Eyali1001/shapedreamer.git
+cd shapedreamer
+uv sync
 
-# Web-based viewer (open http://localhost:5000)
-uv run scripts/web_diffusion.py --checkpoint checkpoints/best.pt
+# Train locally (5 min on GPU, 30 min on M1 Mac)
+uv run scripts/train_local.py --epochs 100
+
+# Generate samples
+uv run scripts/sample.py --checkpoint checkpoints/best.pt --show-process
 ```
 
-## Cloud Training with Modal
+### Cloud Training (Recommended)
 
-For faster training on A100 GPUs:
+Train on Modal's A100 GPUs for fastest results:
 
 ```bash
-# Install Modal
-pip install modal
-
-# Authenticate (one-time)
-modal token new
-
-# Run training on Modal (automatically uses A100)
-modal run modal_app/train.py
-
-# With custom parameters
-modal run modal_app/train.py --epochs 200 --batch-size 128
-
-# Download checkpoints after training
+modal run modal_app/train.py --epochs 100 --batch-size 128
 modal volume get diffusion-checkpoints best.pt ./checkpoints/
-modal volume get diffusion-checkpoints latest.pt ./checkpoints/
 ```
+
+---
+
+## What You'll Learn
+
+| Concept | Where to Look |
+|---------|---------------|
+| Forward diffusion (adding noise) | `src/model/diffusion.py` |
+| Reverse diffusion (denoising) | `src/model/diffusion.py` |
+| U-Net architecture | `src/model/unet.py` |
+| Sinusoidal time embeddings | `src/model/embeddings.py` |
+| Self-attention blocks | `src/model/blocks.py` |
+| DDIM fast sampling | `modal_app/live_diffusion.py` |
+
+---
+
+## How It Works
+
+### The Math (Simplified)
+
+**Forward Process** — Gradually add noise:
+```
+x_t = sqrt(ᾱ_t) · x_0 + sqrt(1-ᾱ_t) · ε
+```
+
+**Reverse Process** — Learn to denoise:
+```
+x_{t-1} = (1/sqrt(α_t)) · (x_t - (β_t/sqrt(1-ᾱ_t)) · ε_θ(x_t, t)) + σ_t · z
+```
+
+The neural network predicts noise **ε** at each timestep. That's it!
+
+### Architecture
+
+```
+Input (32×32) → Encoder → Bottleneck → Decoder → Predicted Noise (32×32)
+                  ↓           ↓           ↑
+            [64→128→256]   [512ch]   [256→128→64]
+                  ↓           ↓           ↑
+              + Time Embedding + Attention at every scale
+```
+
+---
+
+## Training
+
+### Expected Results
+
+| Stage | Loss | Samples Look Like |
+|-------|------|-------------------|
+| Epoch 1-10 | ~0.5 | Pure noise |
+| Epoch 20-50 | ~0.1 | Blurry blobs |
+| Epoch 50-100 | ~0.02 | Clean shapes! |
+
+### Configuration
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--epochs` | 100 | Training epochs |
+| `--samples` | 10000 | Dataset size |
+| `--batch-size` | 64 | Batch size |
+| `--lr` | 2e-4 | Learning rate |
+
+---
 
 ## Project Structure
 
 ```
-toy_diffusion/
-├── pyproject.toml              # Dependencies (uv-compatible)
-├── src/
-│   ├── model/
-│   │   ├── unet.py             # U-Net with attention (~2-4M parameters)
-│   │   ├── blocks.py           # ResBlock, AttentionBlock, Up/Downsample
-│   │   ├── embeddings.py       # Sinusoidal time embeddings
-│   │   └── diffusion.py        # Forward/reverse diffusion processes
-│   ├── data/
-│   │   └── dataset.py          # Synthetic geometric shapes generator
-│   └── training/
-│       └── trainer.py          # Training loop with checkpointing
-├── scripts/
-│   ├── train_local.py          # Local training script
-│   ├── sample.py               # Sample generation script
-│   ├── live_diffusion.py       # Matplotlib live viewer
-│   └── web_diffusion.py        # Flask web-based live viewer
-└── modal_app/
-    ├── train.py                # Modal A100 training
-    └── live_diffusion.py       # Modal live streaming server (DDIM + FP16)
+shapedreamer/
+├── src/model/          # Neural network components
+│   ├── unet.py         # U-Net architecture
+│   ├── blocks.py       # ResBlock, Attention, Up/Down
+│   ├── embeddings.py   # Time embeddings
+│   └── diffusion.py    # DDPM forward/reverse
+├── src/data/           # Synthetic shape generator
+├── scripts/            # Training & sampling
+└── modal_app/          # Cloud GPU deployment
 ```
 
-## How It Works
-
-### The Dataset
-
-We generate simple binary images (32x32 pixels) containing:
-- Circles
-- Rectangles
-- Triangles
-- Lines
-
-Each image has 1-3 shapes randomly placed. This simple dataset:
-- Is trivial to generate (no downloads needed)
-- Is easy to visually verify (you can see if shapes look right)
-- Trains quickly (simple patterns to learn)
-
-### The Diffusion Process
-
-**Forward Process** (training): Add noise to a clean image
-```
-x_t = sqrt(ᾱ_t) * x_0 + sqrt(1-ᾱ_t) * ε
-```
-
-**Reverse Process** (sampling): Start from noise, iteratively denoise
-```
-x_{t-1} = (1/sqrt(α_t)) * (x_t - (β_t/sqrt(1-ᾱ_t)) * ε_θ(x_t, t)) + σ_t * z
-```
-
-The neural network learns to predict the noise ε that was added at timestep t.
-
-### Architecture
-
-The U-Net predicts noise with:
-- **Encoder**: 32→16→8→4 resolution with increasing channels
-- **Bottleneck**: Processing at 4x4 with 512 channels
-- **Decoder**: 4→8→16→32 resolution with skip connections
-- **Time conditioning**: Sinusoidal embeddings added to every ResBlock
-- **Attention**: Self-attention at every resolution for global context
-
-## Expected Results
-
-### Training
-- Loss should decrease from ~1.0 to ~0.01-0.05 over 100 epochs
-- Early epochs: noisy/blurry samples
-- Middle epochs: vague shapes emerging
-- Final epochs: clean geometric shapes
-
-### Samples
-After training, you should see clear circles, rectangles, triangles, and lines similar to the training data.
-
-## Configuration
-
-Key hyperparameters (defaults work well):
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `--epochs` | 100 | Number of training epochs |
-| `--samples` | 10000 | Number of training images |
-| `--batch-size` | 64 | Training batch size |
-| `--lr` | 2e-4 | Learning rate |
-| Timesteps | 1000 | Diffusion steps (hardcoded) |
-| β schedule | 1e-4 → 0.02 | Linear noise schedule |
+---
 
 ## Troubleshooting
 
-### Out of Memory
-- Reduce `--batch-size` to 32 or 16
-- On CPU, use `--batch-size 8`
+| Problem | Solution |
+|---------|----------|
+| Out of memory | Reduce `--batch-size` to 16 |
+| Slow training | Use Modal cloud GPUs |
+| Blurry samples | Train more epochs |
+| No shapes visible | Check loss is decreasing |
 
-### Slow Training
-- Use Modal for cloud GPU training
-- On Mac, ensure MPS is being used (should auto-detect)
-- Reduce `--samples` for faster iterations
-
-### Poor Sample Quality
-- Train for more epochs
-- Check TensorBoard for loss curves
-- Ensure loss is decreasing (should reach <0.1)
+---
 
 ## Further Reading
 
-- [Denoising Diffusion Probabilistic Models](https://arxiv.org/abs/2006.11239) - The original DDPM paper
-- [Understanding Diffusion Models: A Unified Perspective](https://arxiv.org/abs/2208.11970) - Great tutorial paper
-- [Annotated Diffusion](https://huggingface.co/blog/annotated-diffusion) - HuggingFace blog post
+- [DDPM Paper](https://arxiv.org/abs/2006.11239) — The original
+- [Understanding Diffusion Models](https://arxiv.org/abs/2208.11970) — Great tutorial
+- [Annotated Diffusion](https://huggingface.co/blog/annotated-diffusion) — Code walkthrough
 
-## License
+---
 
-MIT
+<div align="center">
+
+**MIT License** · Built for learning
+
+</div>
