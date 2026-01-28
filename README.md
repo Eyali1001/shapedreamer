@@ -67,6 +67,38 @@ uv run scripts/sample.py --checkpoint checkpoints/best.pt --output samples.png
 tensorboard --logdir logs
 ```
 
+## Live Streaming Demo
+
+Watch the diffusion model continuously evolve geometric shapes in real-time!
+
+![Live Diffusion Demo](assets/live_diffusion.gif)
+
+### Run on Modal (Recommended - A100 GPU)
+
+```bash
+# Start the live streaming server
+modal serve modal_app/live_diffusion.py
+
+# Opens web interface at the printed URL
+# Use the creativity slider to control how much shapes change per frame
+```
+
+**Features:**
+- **DDIM sampling**: 20 steps instead of 140+ for ~7x faster generation
+- **FP16 inference**: Additional ~2x speedup
+- **Creativity control**: Adjust how much noise is added between frames
+- **Real-time MJPEG stream**: Works in any browser
+
+### Run Locally
+
+```bash
+# Matplotlib-based viewer (requires display)
+uv run scripts/live_diffusion.py --checkpoint checkpoints/best.pt
+
+# Web-based viewer (open http://localhost:5000)
+uv run scripts/web_diffusion.py --checkpoint checkpoints/best.pt
+```
+
 ## Cloud Training with Modal
 
 For faster training on A100 GPUs:
@@ -106,9 +138,12 @@ toy_diffusion/
 │       └── trainer.py          # Training loop with checkpointing
 ├── scripts/
 │   ├── train_local.py          # Local training script
-│   └── sample.py               # Sample generation script
+│   ├── sample.py               # Sample generation script
+│   ├── live_diffusion.py       # Matplotlib live viewer
+│   └── web_diffusion.py        # Flask web-based live viewer
 └── modal_app/
-    └── train.py                # Modal A100 training
+    ├── train.py                # Modal A100 training
+    └── live_diffusion.py       # Modal live streaming server (DDIM + FP16)
 ```
 
 ## How It Works
